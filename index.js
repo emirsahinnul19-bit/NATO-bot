@@ -7,8 +7,8 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Web sunucusu ${PORT} portunda başlatıldı.`);
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Web sunucusu ${PORT} portunda aktif.`);
 });
 
 // DISCORD BOT KODLARI
@@ -110,7 +110,7 @@ const commands = [
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once('ready', async () => {
-    console.log(`${client.user.tag} olarak giriş yapıldı!`);
+    console.log(`${client.user.tag} olarak başarıyla giriş yapıldı!`);
     try {
         await rest.put(
             Routes.applicationCommands(CLIENT_ID),
@@ -133,20 +133,20 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'kayıt') {
             const mcIsim = options.getString('mcisim');
             const taraf = options.getString('taraf');
-            const targetMember = guild.members.cache.get(member.id);
-
+            
             db.set(`user_${member.id}.mcName`, mcIsim);
             db.set(`user_${member.id}.taraf`, taraf);
             
             let verilecekRol = taraf === 'sivil' ? ROLLER.CIVILIAN : ROLLER.SOLDIER;
 
             try {
+                const targetMember = await guild.members.fetch(member.id).catch(() => null);
                 if (targetMember) {
                     await targetMember.setNickname(`[${taraf.toUpperCase()}] ${mcIsim}`).catch(() => {});
-                    await targetMember.roles.add(verilecekRol);
+                    await targetMember.roles.add(verilecekRol).catch(() => {});
                     
                     if (taraf === 'asker') {
-                        await targetMember.roles.add(ROLLER.ER);
+                        await targetMember.roles.add(ROLLER.ER).catch(() => {});
                     }
                 }
 
@@ -187,7 +187,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'profil') {
             const targetUser = options.getUser('kullanici') || interaction.user;
-            const targetMember = guild.members.cache.get(targetUser.id);
+            const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
             
             const mcName = db.get(`user_${targetUser.id}.mcName`) || 'Kayıtsız';
             const taraf = db.get(`user_${targetUser.id}.taraf`) || 'Belirtilmemiş';
@@ -240,9 +240,9 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId === 'brans_secim_menu') {
             const secilenBransKey = interaction.values[0];
             const hedefBrans = BRANSLAR[secilenBransKey];
-            const targetMember = interaction.guild.members.cache.get(interaction.user.id);
+            const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
 
-            if (!hedefBrans) return;
+            if (!hedefBrans || !targetMember) return;
 
             const roleSahipMi = targetMember.roles.cache.has(hedefBrans.id);
 
@@ -269,7 +269,7 @@ client.on('interactionCreate', async interaction => {
 
             const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
             const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
-            const targetMember = await interaction.guild.members.fetch(interaction.user.id);
+            const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
 
             const rutbeFiyatlari = {
                 'astegmen': { fiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen' },
@@ -284,7 +284,7 @@ client.on('interactionCreate', async interaction => {
 
             const hedef = rutbeFiyatlari[secilenRutbeKey];
 
-            if (!hedef) return;
+            if (!hedef || !targetMember) return;
 
             if (userOp < hedef.fiyat) {
                 return interaction.editReply({ 
@@ -293,11 +293,8 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                if (targetMember) {
-                    await targetMember.roles.add(hedef.rol);
-                    // Düzeltilmiş güvenli puan düşme yöntemi
-                    db.set(`user_${interaction.user.id}.op`, userOp - hedef.fiyat);
-                }
+                await targetMember.roles.add(hedef.rol);
+                db.set(`user_${interaction.user.id}.op`, userOp - hedef.fiyat);
 
                 return interaction.editReply({ 
                     content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`
@@ -316,7 +313,7 @@ client.on('interactionCreate', async interaction => {
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    if (message.content === 'N!market') {
+    if (message.content.trim() === 'N!market') {
         const marketEmbed = new EmbedBuilder()
             .setTitle('NATO Subay & Terfi Marketi')
             .setDescription('Biriktirdiğiniz Onur Puanları (OP) ile subay rütbelerine terfi etmek için aşağıdaki butonlara tıklayabilirsiniz.')
@@ -341,4 +338,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-            
+    
