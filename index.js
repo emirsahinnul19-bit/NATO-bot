@@ -1,3 +1,17 @@
+// UPTIMEROBOT & RENDER UYUMU İÇİN EKLENEN WEB SUNUCUSU
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+    res.send('NATO Moderasyon Botu 7/24 Aktif!');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Web sunucusu ${PORT} portunda başlatıldı.`);
+});
+
+// DISCORD BOT KODLARI
 const { 
     Client, 
     GatewayIntentBits, 
@@ -281,7 +295,7 @@ client.on('interactionCreate', async interaction => {
             try {
                 if (targetMember) {
                     await targetMember.roles.add(hedef.rol);
-                    // Güvenli puan düşme işlemi
+                    // Düzeltilmiş güvenli puan düşme yöntemi
                     db.set(`user_${interaction.user.id}.op`, userOp - hedef.fiyat);
                 }
 
@@ -327,4 +341,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-                   
+            
