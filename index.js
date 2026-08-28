@@ -1,14 +1,15 @@
-// UPTIMEROBOT & RENDER UYUMU İÇİN EKLENEN WEB SUNUCUSU
+// UPTIMEROBOT & RENDER PORT UYUMU İÇİN EKLENEN WEB SUNUCUSU
 const express = require('express');
 const app = express();
+
+const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
     res.send('NATO Moderasyon Botu 7/24 Aktif!');
 });
 
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Web sunucusu ${PORT} portunda aktif.`);
+    console.log(`Web sunucusu ${PORT} portunda başarıyla başlatıldı.`);
 });
 
 // DISCORD BOT KODLARI
@@ -338,4 +339,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-    
+          
