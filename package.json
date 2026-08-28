@@ -1,13 +1,12 @@
 {
   "name": "nato-discord-bot",
   "version": "1.0.0",
-  "description": "NATO Discord Moderasyon Botu",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "quick.db": "^9.1.7"
+    "croxydb": "^0.0.7"
   }
 }
