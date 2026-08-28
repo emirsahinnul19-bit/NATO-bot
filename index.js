@@ -7,6 +7,8 @@ const {
     EmbedBuilder, 
     ActionRowBuilder, 
     StringSelectMenuBuilder, 
+    ButtonBuilder, 
+    ButtonStyle, 
     PermissionFlagsBits 
 } = require('discord.js');
 const db = require('croxydb');
@@ -14,6 +16,7 @@ const db = require('croxydb');
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = '1539374890405204070';
 
+// STATÜ VE RÜTBE ROLLERİ
 const ROLLER = {
     CIVILIAN: '1463997729888931945',
     SOLDIER: '1437766285311217697',
@@ -26,6 +29,16 @@ const ROLLER = {
     ALBAY: '1465002980502929697',
     YARBAY: '1465003356727804170',
     TUGGENERAL: '1422673618478956694'
+};
+
+// BRANŞ / TAKIM ROLLERİ (ID'ler eklendi)
+const BRANSLAR = {
+    KKK: { id: '1434904371245748297', isim: 'Kara Kuvvetleri' },
+    OKK: { id: '1434904099698249768', isim: 'Özel Kuvvetler' },
+    ASINZ: { id: '1434904969290584195', isim: 'Askeri İnzibat' },
+    SM: { id: '1434904514506260623', isim: 'Sınır Müfettişleri' },
+    TSK: { id: '1423304509299494984', isim: 'Türk Silahlı Kuvvetleri' },
+    DKK: { id: '1542947720665501696', isim: 'Deniz Kuvvetleri' }
 };
 
 const client = new Client({
@@ -63,6 +76,10 @@ const commands = [
                 .setRequired(false)),
 
     new SlashCommandBuilder()
+        .setName('team')
+        .setDescription('Profilinizde görünecek aktif branşınızı belirler.'),
+
+    new SlashCommandBuilder()
         .setName('op-ver')
         .setDescription('Bir oyuncuya Onur Puanı ekler.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -95,8 +112,11 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-        if (commandName === 'kayıt') {
+        try {
             await interaction.deferReply({ ephemeral: true });
+        } catch (e) {}
+
+        if (commandName === 'kayıt') {
             const mcIsim = options.getString('mcisim');
             const taraf = options.getString('taraf');
             const targetMember = guild.members.cache.get(member.id);
@@ -107,11 +127,13 @@ client.on('interactionCreate', async interaction => {
             let verilecekRol = taraf === 'sivil' ? ROLLER.CIVILIAN : ROLLER.SOLDIER;
 
             try {
-                await targetMember.setNickname(`[${taraf.toUpperCase()}] ${mcIsim}`);
-                await targetMember.roles.add(verilecekRol);
-                
-                if (taraf === 'asker') {
-                    await targetMember.roles.add(ROLLER.ER);
+                if (targetMember) {
+                    await targetMember.setNickname(`[${taraf.toUpperCase()}] ${mcIsim}`).catch(() => {});
+                    await targetMember.roles.add(verilecekRol).catch(() => {});
+                    
+                    if (taraf === 'asker') {
+                        await targetMember.roles.add(ROLLER.ER).catch(() => {});
+                    }
                 }
 
                 return interaction.editReply({ 
@@ -124,22 +146,57 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        if (commandName === 'team') {
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new StringSelectMenuBuilder()
+                        .setCustomId('brans_secim_menu')
+                        .setPlaceholder('Aktif olarak profilde görünecek branşı seçin...')
+                        .addOptions([
+                            { label: 'Kara Kuvvetleri', value: 'KKK' },
+                            { label: 'Özel Kuvvetler', value: 'OKK' },
+                            { label: 'Askeri İnzibat', value: 'ASINZ' },
+                            { label: 'Sınır Müfettişleri', value: 'SM' },
+                            { label: 'Türk Silahlı Kuvvetleri', value: 'TSK' },
+                            { label: 'Deniz Kuvvetleri', value: 'DKK' }
+                        ])
+                );
+
+            const embed = new EmbedBuilder()
+                .setTitle('NATO Askeri Branş / Takım Doğrulama')
+                .setDescription('Aşağıdaki menüden profilinize işlenmesini istediğiniz branşı seçin.\n*(Sadece Discord üzerinde rolüne sahip olduğunuz branşları seçebilirsiniz!)*')
+                .setColor(0x0099FF);
+
+            return interaction.editReply({ embeds: [embed], components: [row] });
+        }
+
         if (commandName === 'profil') {
-            await interaction.deferReply({ ephemeral: true });
             const targetUser = options.getUser('kullanici') || interaction.user;
+            const targetMember = guild.members.cache.get(targetUser.id);
             
             const mcName = db.get(`user_${targetUser.id}.mcName`) || 'Kayıtsız';
             const taraf = db.get(`user_${targetUser.id}.taraf`) || 'Belirtilmemiş';
+            const seciliBransKey = db.get(`user_${targetUser.id}.seciliBrans`);
             const op = db.get(`user_${targetUser.id}.op`) || 0;
+
+            const bransIsmi = seciliBransKey && BRANSLAR[seciliBransKey] 
+                ? BRANSLAR[seciliBransKey].isim 
+                : 'Branş Seçilmedi';
+
+            const katilimTarihi = targetMember 
+                ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:D>` 
+                : 'Bilinmiyor';
 
             const profilEmbed = new EmbedBuilder()
                 .setTitle(`NATO Askeri Künye — ${targetUser.username}`)
                 .setColor(0x0099FF)
                 .setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
-                    { name: 'Minecraft Kullanıcı Adı', value: mcName, inline: true },
-                    { name: 'Taraf / Statü', value: taraf.toUpperCase(), inline: true },
-                    { name: 'Onur Puanı (OP)', value: `${op} OP`, inline: false }
+                    { name: 'Minecraft Kullanıcı Adı', value: String(mcName), inline: true },
+                    { name: 'Taraf / Statü', value: String(taraf).toUpperCase(), inline: true },
+                    { name: 'Branş / Takım', value: bransIsmi, inline: true },
+                    { name: 'Ulusa Katılım Tarihi', value: katilimTarihi, inline: true },
+                    { name: 'Onur Puanı (OP)', value: `${op} OP`, inline: true }
                 )
                 .setFooter({ text: 'NATO Moderasyon Sistemi' })
                 .setTimestamp();
@@ -148,7 +205,6 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'op-ver') {
-            await interaction.deferReply({ ephemeral: true });
             const targetUser = options.getUser('kullanici');
             const miktar = options.getInteger('miktar');
 
@@ -162,24 +218,56 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'market_rutbe_sec') {
+        try {
             await interaction.deferReply({ ephemeral: true });
-            const secilenRutbe = interaction.values[0];
+        } catch (e) {}
+
+        if (interaction.customId === 'brans_secim_menu') {
+            const secilenBransKey = interaction.values[0];
+            const hedefBrans = BRANSLAR[secilenBransKey];
+            const targetMember = interaction.guild.members.cache.get(interaction.user.id);
+
+            if (!hedefBrans) return;
+
+            const roleSahipMi = targetMember.roles.cache.has(hedefBrans.id);
+
+            if (!roleSahipMi) {
+                return interaction.editReply({
+                    content: `⛔ **Erişim Engellendi!**\n**${hedefBrans.isim}** branşına geçebilmek için Discord sunucumuzda o branşın rolüne sahip olmanız gerekmektedir.`
+                });
+            }
+
+            db.set(`user_${interaction.user.id}.seciliBrans`, secilenBransKey);
+
+            return interaction.editReply({
+                content: `✅ Rolünüz doğrulandı! Profil branşınız **${hedefBrans.isim}** olarak güncellendi.`
+            });
+        }
+    }
+
+    // BUTON İLE TERFİ ALMA İŞLEMİ
+    if (interaction.isButton()) {
+        if (interaction.customId.startsWith('rutbe_btn_')) {
+            try {
+                await interaction.deferReply({ ephemeral: true });
+            } catch (e) {}
+
+            const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
             const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
             const targetMember = interaction.guild.members.cache.get(interaction.user.id);
 
             const rutbeFiyatlari = {
-                'rutbe_astegmen': { fiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen' },
-                'rutbe_tegmen': { fiyat: 200, rol: ROLLER.TEGMEN, isim: 'OF-1/B Teğmen' },
-                'rutbe_ustegmen': { fiyat: 350, rol: ROLLER.USTEGMEN, isim: 'OF-1/C Üsteğmen' },
-                'rutbe_yuzbasi': { fiyat: 500, rol: ROLLER.YUZBASI, isim: 'OF-2 Yüzbaşı' },
-                'rutbe_binbasi': { fiyat: 750, rol: ROLLER.BINBASI, isim: 'OF-3 Binbaşı' },
-                'rutbe_albay': { fiyat: 1000, rol: ROLLER.ALBAY, isim: 'OF-4 Albay' },
-                'rutbe_yarbay': { fiyat: 1500, rol: ROLLER.YARBAY, isim: 'OF-5 Yarbay' },
-                'rutbe_tuggeneral': { fiyat: 2500, rol: ROLLER.TUGGENERAL, isim: 'OF-6 Tuğgeneral' }
+                'astegmen': { fiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen' },
+                'tegmen': { fiyat: 200, rol: ROLLER.TEGMEN, isim: 'OF-1/B Teğmen' },
+                'ustegmen': { fiyat: 350, rol: ROLLER.USTEGMEN, isim: 'OF-1/C Üsteğmen' },
+                'yuzbasi': { fiyat: 500, rol: ROLLER.YUZBASI, isim: 'OF-2 Yüzbaşı' },
+                'binbasi': { fiyat: 750, rol: ROLLER.BINBASI, isim: 'OF-3 Binbaşı' },
+                'albay': { fiyat: 1000, rol: ROLLER.ALBAY, isim: 'OF-4 Albay' },
+                'yarbay': { fiyat: 1500, rol: ROLLER.YARBAY, isim: 'OF-5 Yarbay' },
+                'tuggeneral': { fiyat: 2500, rol: ROLLER.TUGGENERAL, isim: 'OF-6 Tuğgeneral' }
             };
 
-            const hedef = rutbeFiyatlari[secilenRutbe];
+            const hedef = rutbeFiyatlari[secilenRutbeKey];
 
             if (!hedef) return;
 
@@ -189,45 +277,51 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
-            await targetMember.roles.add(hedef.rol);
+            try {
+                db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
+                if (targetMember) {
+                    await targetMember.roles.add(hedef.rol);
+                }
 
-            return interaction.editReply({ 
-                content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`
-            });
+                return interaction.editReply({ 
+                    content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`
+                });
+            } catch (err) {
+                return interaction.editReply({ 
+                    content: 'Rol verilirken yetki hatası oluştu. Botun rolünün sıralamada en üstte olduğundan emin olun.'
+                });
+            }
         }
     }
 });
 
+// N!MARKET BUTONLU PANELİ
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
     if (message.content === 'N!market') {
         const marketEmbed = new EmbedBuilder()
             .setTitle('NATO Subay & Terfi Marketi')
-            .setDescription('Aşağıdaki menüden biriktirdiğiniz Onur Puanları (OP) ile subay rütbelerine terfi edebilirsiniz.')
+            .setDescription('Biriktirdiğiniz Onur Puanları (OP) ile subay rütbelerine terfi etmek için aşağıdaki butonlara tıklayabilirsiniz.')
             .setColor(0x00FF00);
 
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new StringSelectMenuBuilder()
-                    .setCustomId('market_rutbe_sec')
-                    .setPlaceholder('Terfi etmek istediğiniz rütbeyi seçin...')
-                    .addOptions([
-                        { label: 'OF-1/A Asteğmen', description: 'Fiyat: 100 OP', value: 'rutbe_astegmen' },
-                        { label: 'OF-1/B Teğmen', description: 'Fiyat: 200 OP', value: 'rutbe_tegmen' },
-                        { label: 'OF-1/C Üsteğmen', description: 'Fiyat: 350 OP', value: 'rutbe_ustegmen' },
-                        { label: 'OF-2 Yüzbaşı', description: 'Fiyat: 500 OP', value: 'rutbe_yuzbasi' },
-                        { label: 'OF-3 Binbaşı', description: 'Fiyat: 750 OP', value: 'rutbe_binbasi' },
-                        { label: 'OF-4 Albay', description: 'Fiyat: 1000 OP', value: 'rutbe_albay' },
-                        { label: 'OF-5 Yarbay', description: 'Fiyat: 1500 OP', value: 'rutbe_yarbay' },
-                        { label: 'OF-6 Tuğgeneral', description: 'Fiyat: 2500 OP', value: 'rutbe_tuggeneral' }
-                    ])
-            );
+        const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('rutbe_btn_astegmen').setLabel('Asteğmen (100 OP)').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_tegmen').setLabel('Teğmen (200 OP)').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_ustegmen').setLabel('Üsteğmen (350 OP)').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_yuzbasi').setLabel('Yüzbaşı (500 OP)').setStyle(ButtonStyle.Primary)
+        );
 
-        await message.channel.send({ embeds: [marketEmbed], components: [row] });
+        const row2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('rutbe_btn_binbasi').setLabel('Binbaşı (750 OP)').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_albay').setLabel('Albay (1000 OP)').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_yarbay').setLabel('Yarbay (1500 OP)').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('rutbe_btn_tuggeneral').setLabel('Tuğgeneral (2500 OP)').setStyle(ButtonStyle.Success)
+        );
+
+        await message.channel.send({ embeds: [marketEmbed], components: [row1, row2] });
     }
 });
 
 client.login(TOKEN);
-                        
+            
