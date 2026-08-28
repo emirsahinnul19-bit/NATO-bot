@@ -9,10 +9,8 @@ const {
     StringSelectMenuBuilder, 
     PermissionFlagsBits 
 } = require('discord.js');
-const { QuickDB } = require('quick.db');
-const db = new QuickDB();
+const db = require('croxydb');
 
-// Kullanıcı Bilgileri ve Rol ID'leri (Token Render Environment'tan çekilir)
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = '1539374890405204070';
 
@@ -39,7 +37,6 @@ const client = new Client({
     ]
 });
 
-// Slash Komut Tanımlamaları
 const commands = [
     new SlashCommandBuilder()
         .setName('kayıt')
@@ -79,7 +76,6 @@ const commands = [
                 .setRequired(true))
 ].map(command => command.toJSON());
 
-// Slash Komutları Yükleme
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 client.once('ready', async () => {
@@ -95,19 +91,17 @@ client.once('ready', async () => {
     }
 });
 
-// Interaction (Slash & Select Menu) İşleyici
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-        // /kayıt Komutu
         if (commandName === 'kayıt') {
             const mcIsim = options.getString('mcisim');
             const taraf = options.getString('taraf');
             const targetMember = guild.members.cache.get(member.id);
 
-            await db.set(`user_${member.id}.mcName`, mcIsim);
-            await db.set(`user_${member.id}.taraf`, taraf);
+            db.set(`user_${member.id}.mcName`, mcIsim);
+            db.set(`user_${member.id}.taraf`, taraf);
             
             let verilecekRol = taraf === 'sivil' ? ROLLER.CIVILIAN : ROLLER.SOLDIER;
 
@@ -131,13 +125,12 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // /profil Komutu
         if (commandName === 'profil') {
             const targetUser = options.getUser('kullanici') || interaction.user;
             
-            const mcName = await db.get(`user_${targetUser.id}.mcName`) || 'Kayıtsız';
-            const taraf = await db.get(`user_${targetUser.id}.taraf`) || 'Belirtilmemiş';
-            const op = await db.get(`user_${targetUser.id}.op`) || 0;
+            const mcName = db.get(`user_${targetUser.id}.mcName`) || 'Kayıtsız';
+            const taraf = db.get(`user_${targetUser.id}.taraf`) || 'Belirtilmemiş';
+            const op = db.get(`user_${targetUser.id}.op`) || 0;
 
             const profilEmbed = new EmbedBuilder()
                 .setTitle(`NATO Askeri Künye — ${targetUser.username}`)
@@ -154,13 +147,12 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: [profilEmbed], ephemeral: true });
         }
 
-        // /op-ver Komutu
         if (commandName === 'op-ver') {
             const targetUser = options.getUser('kullanici');
             const miktar = options.getInteger('miktar');
 
-            await db.add(`user_${targetUser.id}.op`, miktar);
-            const yeniOp = await db.get(`user_${targetUser.id}.op`);
+            db.add(`user_${targetUser.id}.op`, miktar);
+            const yeniOp = db.get(`user_${targetUser.id}.op`);
 
             return interaction.reply({ 
                 content: `${targetUser.tag} kullanıcısına **${miktar} OP** eklendi. Toplam OP: **${yeniOp}**`, 
@@ -169,11 +161,10 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // N!market Seçim Menüsü Etkileşimi
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'market_rutbe_sec') {
             const secilenRutbe = interaction.values[0];
-            const userOp = (await db.get(`user_${interaction.user.id}.op`)) || 0;
+            const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
             const targetMember = interaction.guild.members.cache.get(interaction.user.id);
 
             const rutbeFiyatlari = {
@@ -198,7 +189,7 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            await db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
+            db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
             await targetMember.roles.add(hedef.rol);
 
             return interaction.reply({ 
@@ -209,7 +200,6 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Text Tabanlı N!market Komutu
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
