@@ -46,6 +46,30 @@ const ROLLER = {
     TUGGENERAL: '1422673618478956694'
 };
 
+// VARSAYILAN MARKET FİYATLARI VE RÜTBE BİLGİLERİ
+const VARSAYILAN_RUTBELER = {
+    'astegmen': { varsayilanFiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen', etiket: 'Asteğmen' },
+    'tegmen': { varsayilanFiyat: 200, rol: ROLLER.TEGMEN, isim: 'OF-1/B Teğmen', etiket: 'Teğmen' },
+    'ustegmen': { varsayilanFiyat: 350, rol: ROLLER.USTEGMEN, isim: 'OF-1/C Üsteğmen', etiket: 'Üsteğmen' },
+    'yuzbasi': { varsayilanFiyat: 500, rol: ROLLER.YUZBASI, isim: 'OF-2 Yüzbaşı', etiket: 'Yüzbaşı' },
+    'binbasi': { varsayilanFiyat: 750, rol: ROLLER.BINBASI, isim: 'OF-3 Binbaşı', etiket: 'Binbaşı' },
+    'albay': { varsayilanFiyat: 1000, rol: ROLLER.ALBAY, isim: 'OF-4 Albay', etiket: 'Albay' },
+    'yarbay': { varsayilanFiyat: 1500, rol: ROLLER.YARBAY, isim: 'OF-5 Yarbay', etiket: 'Yarbay' },
+    'tuggeneral': { varsayilanFiyat: 2500, rol: ROLLER.TUGGENERAL, isim: 'OF-6 Tuğgeneral', etiket: 'Tuğgeneral' }
+};
+
+// DİĞER RÜTBELERİ TEMİZLEMEK İÇİN Sadece SUBAY RÜTBE ID LİSTESİ
+const SUBAY_ROLLERI_LISTESI = [
+    ROLLER.ASTEGMEN,
+    ROLLER.TEGMEN,
+    ROLLER.USTEGMEN,
+    ROLLER.YUZBASI,
+    ROLLER.BINBASI,
+    ROLLER.ALBAY,
+    ROLLER.YARBAY,
+    ROLLER.TUGGENERAL
+];
+
 // BRANŞ / TAKIM ROLLERİ
 const BRANSLAR = {
     KKK: { id: '1434904371245748297', isim: 'Kara Kuvvetleri' },
@@ -261,7 +285,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // BUTON İLE TERFİ ALMA İŞLEMİ
+    // BUTON İLE TERFİ ALMA İŞLEMİ VE ESKİ RÜTBELERİ TEMİZLEME
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('rutbe_btn_')) {
             try {
@@ -269,36 +293,35 @@ client.on('interactionCreate', async interaction => {
             } catch (e) {}
 
             const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
-            const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
             const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-
-            const rutbeFiyatlari = {
-                'astegmen': { fiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen' },
-                'tegmen': { fiyat: 200, rol: ROLLER.TEGMEN, isim: 'OF-1/B Teğmen' },
-                'ustegmen': { fiyat: 350, rol: ROLLER.USTEGMEN, isim: 'OF-1/C Üsteğmen' },
-                'yuzbasi': { fiyat: 500, rol: ROLLER.YUZBASI, isim: 'OF-2 Yüzbaşı' },
-                'binbasi': { fiyat: 750, rol: ROLLER.BINBASI, isim: 'OF-3 Binbaşı' },
-                'albay': { fiyat: 1000, rol: ROLLER.ALBAY, isim: 'OF-4 Albay' },
-                'yarbay': { fiyat: 1500, rol: ROLLER.YARBAY, isim: 'OF-5 Yarbay' },
-                'tuggeneral': { fiyat: 2500, rol: ROLLER.TUGGENERAL, isim: 'OF-6 Tuğgeneral' }
-            };
-
-            const hedef = rutbeFiyatlari[secilenRutbeKey];
+            const hedef = VARSAYILAN_RUTBELER[secilenRutbeKey];
 
             if (!hedef || !targetMember) return;
 
-            if (userOp < hedef.fiyat) {
+            // Güncel fiyatı veritabanından çek (Ayarlanmadıysa varsayılanı kullan)
+            const guncelFiyat = db.get(`marketFiyat_${secilenRutbeKey}`) || hedef.varsayilanFiyat;
+            const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
+
+            if (userOp < guncelFiyat) {
                 return interaction.editReply({ 
-                    content: `Yetersiz OP! **${hedef.isim}** rütbesi için **${hedef.fiyat} OP** gerekiyor. Mevcut OP: **${userOp}**`
+                    content: `Yetersiz OP! **${hedef.isim}** rütbesi için **${guncelFiyat} OP** gerekiyor. Mevcut OP: **${userOp}**`
                 });
             }
 
             try {
+                // 1. Kullanıcının üstündeki diğer tüm subay rütbelerini kaldır
+                for (const rolId of SUBAY_ROLLERI_LISTESI) {
+                    if (targetMember.roles.cache.has(rolId)) {
+                        await targetMember.roles.remove(rolId).catch(() => {});
+                    }
+                }
+
+                // 2. Yeni rütbeyi ver ve OP düş
                 await targetMember.roles.add(hedef.rol);
-                db.set(`user_${interaction.user.id}.op`, userOp - hedef.fiyat);
+                db.set(`user_${interaction.user.id}.op`, userOp - guncelFiyat);
 
                 return interaction.editReply({ 
-                    content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`
+                    content: `Tebrikler! **${guncelFiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz! (Eski rütbeleriniz temizlendi)`
                 });
             } catch (err) {
                 console.error("Market Terfi Hatası Detayı:", err);
@@ -310,28 +333,64 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// N!MARKET BUTONLU PANELİ
+// MESSAGECREATE (N!market VE N!marketayar KOMUTLARI)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
+    // FİYAT AYARLAMA KOMUTU: N!marketayar <rütbe> <yeni_fiyat>
+    if (message.content.startsWith('N!marketayar')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            return message.reply('❌ Bu komutu sadece Yöneticiler kullanabilir!');
+        }
+
+        const args = message.content.split(' ').slice(1);
+        if (args.length < 2) {
+            return message.reply('⚠️ **Kullanım:** `N!marketayar <rütbe_adı> <fiyat>`\n**Örnek:** `N!marketayar asteğmen 150`\n\n**Geçerli Rütbeler:** `asteğmen`, `teğmen`, `üsteğmen`, `yüzbaşı`, `binbaşı`, `albay`, `yarbay`, `tuğgeneral`');
+        }
+
+        const inputRutbe = args[0].toLowerCase()
+            .replace('ğ', 'g')
+            .replace('ş', 's')
+            .replace('ı', 'i')
+            .replace('ü', 'u');
+            
+        const yeniFiyat = parseInt(args[1]);
+
+        if (isNaN(yeniFiyat) || yeniFiyat < 0) {
+            return message.reply('❌ Lütfen geçerli bir sayısal fiyat girin!');
+        }
+
+        if (!VARSAYILAN_RUTBELER[inputRutbe]) {
+            return message.reply('❌ Geçersiz rütbe adı! Geçerli rütbeler: `asteğmen`, `teğmen`, `üsteğmen`, `yüzbaşı`, `binbaşı`, `albay`, `yarbay`, `tuğgeneral`');
+        }
+
+        // Veritabanına kaydet
+        db.set(`marketFiyat_${inputRutbe}`, yeniFiyat);
+
+        return message.reply(`✅ **${VARSAYILAN_RUTBELER[inputRutbe].isim}** rütbesinin yeni fiyatı **${yeniFiyat} OP** olarak güncellendi!`);
+    }
+
+    // N!MARKET BUTONLU PANELİ
     if (message.content.trim() === 'N!market') {
+        const getFiyat = (key) => db.get(`marketFiyat_${key}`) || VARSAYILAN_RUTBELER[key].varsayilanFiyat;
+
         const marketEmbed = new EmbedBuilder()
             .setTitle('NATO Subay & Terfi Marketi')
             .setDescription('Biriktirdiğiniz Onur Puanları (OP) ile subay rütbelerine terfi etmek için aşağıdaki butonlara tıklayabilirsiniz.')
             .setColor(0x00FF00);
 
         const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('rutbe_btn_astegmen').setLabel('Asteğmen (100 OP)').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_tegmen').setLabel('Teğmen (200 OP)').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_ustegmen').setLabel('Üsteğmen (350 OP)').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_yuzbasi').setLabel('Yüzbaşı (500 OP)').setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId('rutbe_btn_astegmen').setLabel(`Asteğmen (${getFiyat('astegmen')} OP)`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_tegmen').setLabel(`Teğmen (${getFiyat('tegmen')} OP)`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_ustegmen').setLabel(`Üsteğmen (${getFiyat('ustegmen')} OP)`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_yuzbasi').setLabel(`Yüzbaşı (${getFiyat('yuzbasi')} OP)`).setStyle(ButtonStyle.Primary)
         );
 
         const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('rutbe_btn_binbasi').setLabel('Binbaşı (750 OP)').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_albay').setLabel('Albay (1000 OP)').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_yarbay').setLabel('Yarbay (1500 OP)').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('rutbe_btn_tuggeneral').setLabel('Tuğgeneral (2500 OP)').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId('rutbe_btn_binbasi').setLabel(`Binbaşı (${getFiyat('binbasi')} OP)`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_albay').setLabel(`Albay (${getFiyat('albay')} OP)`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_yarbay').setLabel(`Yarbay (${getFiyat('yarbay')} OP)`).setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('rutbe_btn_tuggeneral').setLabel(`Tuğgeneral (${getFiyat('tuggeneral')} OP)`).setStyle(ButtonStyle.Success)
         );
 
         await message.channel.send({ embeds: [marketEmbed], components: [row1, row2] });
@@ -339,4 +398,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-          
+            
