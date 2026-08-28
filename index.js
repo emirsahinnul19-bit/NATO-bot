@@ -281,7 +281,8 @@ client.on('interactionCreate', async interaction => {
             try {
                 if (targetMember) {
                     await targetMember.roles.add(hedef.rol);
-                    db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
+                    // Güvenli puan düşme işlemi
+                    db.set(`user_${interaction.user.id}.op`, userOp - hedef.fiyat);
                 }
 
                 return interaction.editReply({ 
@@ -326,4 +327,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-                            
+                   
