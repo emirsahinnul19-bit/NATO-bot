@@ -31,7 +31,7 @@ const ROLLER = {
     TUGGENERAL: '1422673618478956694'
 };
 
-// BRANŞ / TAKIM ROLLERİ (ID'ler eklendi)
+// BRANŞ / TAKIM ROLLERİ
 const BRANSLAR = {
     KKK: { id: '1434904371245748297', isim: 'Kara Kuvvetleri' },
     OKK: { id: '1434904099698249768', isim: 'Özel Kuvvetler' },
@@ -129,10 +129,10 @@ client.on('interactionCreate', async interaction => {
             try {
                 if (targetMember) {
                     await targetMember.setNickname(`[${taraf.toUpperCase()}] ${mcIsim}`).catch(() => {});
-                    await targetMember.roles.add(verilecekRol).catch(() => {});
+                    await targetMember.roles.add(verilecekRol);
                     
                     if (taraf === 'asker') {
-                        await targetMember.roles.add(ROLLER.ER).catch(() => {});
+                        await targetMember.roles.add(ROLLER.ER);
                     }
                 }
 
@@ -140,8 +140,9 @@ client.on('interactionCreate', async interaction => {
                     content: `Kayıt başarılı! Adınız **[${taraf.toUpperCase()}] ${mcIsim}** olarak güncellendi.`
                 });
             } catch (err) {
+                console.error("Kayıt Hatası:", err);
                 return interaction.editReply({ 
-                    content: 'Kayıt yapılırken bir yetki hatası oluştu. Botun rolünün en üstte olduğundan emin olun.'
+                    content: `Kayıt yapılırken hata oluştu: \`${err.message}\``
                 });
             }
         }
@@ -240,7 +241,7 @@ client.on('interactionCreate', async interaction => {
             db.set(`user_${interaction.user.id}.seciliBrans`, secilenBransKey);
 
             return interaction.editReply({
-                content: `✅ Rolünüz doğrulandı! Profil branşınız **${hedefBrans.isim}** olarak güncellendi.`
+                content: `✅ Profil branşınız **${hedefBrans.isim}** olarak güncellendi.`
             });
         }
     }
@@ -254,7 +255,7 @@ client.on('interactionCreate', async interaction => {
 
             const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
             const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
-            const targetMember = interaction.guild.members.cache.get(interaction.user.id);
+            const targetMember = await interaction.guild.members.fetch(interaction.user.id);
 
             const rutbeFiyatlari = {
                 'astegmen': { fiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen' },
@@ -278,17 +279,18 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
                 if (targetMember) {
                     await targetMember.roles.add(hedef.rol);
+                    db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
                 }
 
                 return interaction.editReply({ 
                     content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`
                 });
             } catch (err) {
+                console.error("Market Terfi Hatası Detayı:", err);
                 return interaction.editReply({ 
-                    content: 'Rol verilirken yetki hatası oluştu. Botun rolünün sıralamada en üstte olduğundan emin olun.'
+                    content: `Rol verilirken teknik bir hata oluştu: \`${err.message}\``
                 });
             }
         }
@@ -324,4 +326,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-            
+                            
