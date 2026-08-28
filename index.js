@@ -96,6 +96,7 @@ client.on('interactionCreate', async interaction => {
         const { commandName, options, member, guild } = interaction;
 
         if (commandName === 'kayıt') {
+            await interaction.deferReply({ ephemeral: true });
             const mcIsim = options.getString('mcisim');
             const taraf = options.getString('taraf');
             const targetMember = guild.members.cache.get(member.id);
@@ -113,19 +114,18 @@ client.on('interactionCreate', async interaction => {
                     await targetMember.roles.add(ROLLER.ER);
                 }
 
-                return interaction.reply({ 
-                    content: `Kayıt başarılı! Adınız **[${taraf.toUpperCase()}] ${mcIsim}** olarak güncellendi.`, 
-                    ephemeral: true 
+                return interaction.editReply({ 
+                    content: `Kayıt başarılı! Adınız **[${taraf.toUpperCase()}] ${mcIsim}** olarak güncellendi.`
                 });
             } catch (err) {
-                return interaction.reply({ 
-                    content: 'Kayıt yapılırken bir yetki hatası oluştu. Botun rolünün en üstte olduğundan emin olun.', 
-                    ephemeral: true 
+                return interaction.editReply({ 
+                    content: 'Kayıt yapılırken bir yetki hatası oluştu. Botun rolünün en üstte olduğundan emin olun.'
                 });
             }
         }
 
         if (commandName === 'profil') {
+            await interaction.deferReply({ ephemeral: true });
             const targetUser = options.getUser('kullanici') || interaction.user;
             
             const mcName = db.get(`user_${targetUser.id}.mcName`) || 'Kayıtsız';
@@ -144,25 +144,26 @@ client.on('interactionCreate', async interaction => {
                 .setFooter({ text: 'NATO Moderasyon Sistemi' })
                 .setTimestamp();
 
-            return interaction.reply({ embeds: [profilEmbed], ephemeral: true });
+            return interaction.editReply({ embeds: [profilEmbed] });
         }
 
         if (commandName === 'op-ver') {
+            await interaction.deferReply({ ephemeral: true });
             const targetUser = options.getUser('kullanici');
             const miktar = options.getInteger('miktar');
 
             db.add(`user_${targetUser.id}.op`, miktar);
             const yeniOp = db.get(`user_${targetUser.id}.op`);
 
-            return interaction.reply({ 
-                content: `${targetUser.tag} kullanıcısına **${miktar} OP** eklendi. Toplam OP: **${yeniOp}**`, 
-                ephemeral: true 
+            return interaction.editReply({ 
+                content: `${targetUser.tag} kullanıcısına **${miktar} OP** eklendi. Toplam OP: **${yeniOp}**`
             });
         }
     }
 
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'market_rutbe_sec') {
+            await interaction.deferReply({ ephemeral: true });
             const secilenRutbe = interaction.values[0];
             const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
             const targetMember = interaction.guild.members.cache.get(interaction.user.id);
@@ -183,18 +184,16 @@ client.on('interactionCreate', async interaction => {
             if (!hedef) return;
 
             if (userOp < hedef.fiyat) {
-                return interaction.reply({ 
-                    content: `Yetersiz OP! **${hedef.isim}** rütbesi için **${hedef.fiyat} OP** gerekiyor. Mevcut OP: **${userOp}**`, 
-                    ephemeral: true 
+                return interaction.editReply({ 
+                    content: `Yetersiz OP! **${hedef.isim}** rütbesi için **${hedef.fiyat} OP** gerekiyor. Mevcut OP: **${userOp}**`
                 });
             }
 
             db.sub(`user_${interaction.user.id}.op`, hedef.fiyat);
             await targetMember.roles.add(hedef.rol);
 
-            return interaction.reply({ 
-                content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`, 
-                ephemeral: true 
+            return interaction.editReply({ 
+                content: `Tebrikler! **${hedef.fiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!`
             });
         }
     }
@@ -231,3 +230,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
+                        
