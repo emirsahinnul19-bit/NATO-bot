@@ -167,7 +167,7 @@ client.on('interactionCreate', async interaction => {
             try {
                 const targetMember = await guild.members.fetch(member.id).catch(() => null);
                 if (targetMember) {
-                    await targetMember.setNickname(`[${taraf.toUpperCase()}] ${mcIsim}`).catch(() => {});
+                    await targetMember.setNickname(`${mcIsim}`).catch(() => {}) 
                     await targetMember.roles.add(verilecekRol).catch(() => {});
                     
                     if (taraf === 'asker') {
