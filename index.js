@@ -1,18 +1,18 @@
-// UPTIMEROBOT & RENDER PORT UYUMU İÇİN EKLENEN WEB SUNUCUSU
+// 1. EXPRESS WEB SUNUCUSU (RENDER PORT UYUMU)
 const express = require('express');
 const app = express();
 
 const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
-    res.send('NATO Moderasyon Botu 7/24 Aktif!');
+    res.status(200).send('NATO Moderasyon Botu 7/24 Aktif!');
 });
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Web sunucusu ${PORT} portunda başarıyla başlatıldı.`);
 });
 
-// DISCORD BOT KODLARI
+// 2. DISCORD BOT KODLARI
 const { 
     Client, 
     GatewayIntentBits, 
@@ -24,17 +24,18 @@ const {
     StringSelectMenuBuilder, 
     ButtonBuilder, 
     ButtonStyle, 
-    PermissionFlagsBits 
+    PermissionFlagsBits,
+    MessageFlags 
 } = require('discord.js');
 const db = require('croxydb');
 
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = '1539374890405204070';
 
-// SİTE LİNKİ (YENİ EKLENEN VERIFLY PORTALİ)
+// SİTE LİNKİ
 const SITE_LINKI = 'https://sites.google.com/view/nato/nato/verifly?authuser=0'; 
 
-// ONAYLI ROL (İSTEĞE BAĞLI: Rol vermek istemiyorsan tırnak içini boş bırakabilirsin)
+// ONAYLI ROL (İsteğe bağlı)
 const ONAYLI_ROL_ID = ''; 
 
 // STATÜ VE RÜTBE ROLLERİ
@@ -52,7 +53,6 @@ const ROLLER = {
     TUGGENERAL: '1422673618478956694'
 };
 
-// VARSAYILAN MARKET FİYATLARI VE RÜTBE BİLGİLERİ
 const VARSAYILAN_RUTBELER = {
     'astegmen': { varsayilanFiyat: 100, rol: ROLLER.ASTEGMEN, isim: 'OF-1/A Asteğmen', etiket: 'Asteğmen' },
     'tegmen': { varsayilanFiyat: 200, rol: ROLLER.TEGMEN, isim: 'OF-1/B Teğmen', etiket: 'Teğmen' },
@@ -64,7 +64,6 @@ const VARSAYILAN_RUTBELER = {
     'tuggeneral': { varsayilanFiyat: 2500, rol: ROLLER.TUGGENERAL, isim: 'OF-6 Tuğgeneral', etiket: 'Tuğgeneral' }
 };
 
-// DİĞER RÜTBELERİ TEMİZLEMEK İÇİN SUBAY RÜTBE ID LİSTESİ
 const SUBAY_ROLLERI_LISTESI = [
     ROLLER.ASTEGMEN,
     ROLLER.TEGMEN,
@@ -76,7 +75,6 @@ const SUBAY_ROLLERI_LISTESI = [
     ROLLER.TUGGENERAL
 ];
 
-// BRANŞ / TAKIM ROLLERİ
 const BRANSLAR = {
     KKK: { id: '1434904371245748297', isim: 'Kara Kuvvetleri' },
     OKK: { id: '1434904099698249768', isim: 'Özel Kuvvetler' },
@@ -162,10 +160,9 @@ client.on('interactionCreate', async interaction => {
         const { commandName, options, member, guild } = interaction;
 
         try {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         } catch (e) {}
 
-        // /verify KOMUTU (VERIFLY SİTE YÖNLENDİRMESİ)
         if (commandName === 'verify') {
             const verifyEmbed = new EmbedBuilder()
                 .setTitle('🎖️ NATO & Yıldırım Orduları Dijital Kimlik Doğrulama')
@@ -287,7 +284,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isStringSelectMenu()) {
         try {
-            await interaction.deferReply({ ephemeral: true });
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         } catch (e) {}
 
         if (interaction.customId === 'brans_secim_menu') {
@@ -313,11 +310,10 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // BUTON İLE TERFİ ALMA İŞLEMİ VE ESKİ RÜTBELERİ TEMİZLEME
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('rutbe_btn_')) {
             try {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             } catch (e) {}
 
             const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
@@ -358,11 +354,9 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// MESSAGECREATE (N!doğrula, N!market VE N!marketayar KOMUTLARI)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
-    // N!doğrula <KOD> <MC_NICK> KOMUTU
     if (message.content.startsWith('N!doğrula') || message.content.startsWith('N!dogrula')) {
         const args = message.content.split(' ').slice(1);
         const code = args[0];
@@ -387,13 +381,11 @@ client.on('messageCreate', async message => {
             return message.reply(`⚠️ **${mcNick}** Minecraft kullanıcı adı zaten başka bir Discord hesabına kayıtlı!`);
         }
 
-        // Veritabanına Kayıt
         db.set(`user_${message.author.id}.mcName`, mcNick);
         db.set(`user_${message.author.id}.verified`, true);
         db.set(`user_${message.author.id}.code`, code.toUpperCase());
         db.push(`all_users`, mcNick.toLowerCase());
 
-        // Kullanıcının Nickini Güncelle (Ve varsa rol ver)
         try {
             const member = await message.guild.members.fetch(message.author.id);
             if (member) {
@@ -417,7 +409,6 @@ client.on('messageCreate', async message => {
         return message.reply({ embeds: [embed] });
     }
 
-    // FİYAT AYARLAMA KOMUTU: N!marketayar <rütbe> <yeni_fiyat>
     if (message.content.startsWith('N!marketayar')) {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
             return message.reply('❌ Bu komutu sadece Yöneticiler kullanabilir!');
@@ -449,7 +440,6 @@ client.on('messageCreate', async message => {
         return message.reply(`✅ **${VARSAYILAN_RUTBELER[inputRutbe].isim}** rütbesinin yeni fiyatı **${yeniFiyat} OP** olarak güncellendi!`);
     }
 
-    // N!MARKET BUTONLU PANELİ
     if (message.content.trim() === 'N!market') {
         const getFiyat = (key) => db.get(`marketFiyat_${key}`) || VARSAYILAN_RUTBELER[key].varsayilanFiyat;
 
@@ -468,3 +458,13 @@ client.on('messageCreate', async message => {
         const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('rutbe_btn_binbasi').setLabel(`Binbaşı (${getFiyat('binbasi')} OP)`).setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('rutbe_btn_albay').setLabel(`Albay (${getFiyat('albay')} OP)`).setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('rutbe_btn_yarbay').setLabel(`Yarbay (${getFiyat('yarbay')} OP)`).setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('rutbe_btn_tuggeneral').setLabel(`Tuğgeneral (${getFiyat('tuggeneral')} OP)`).setStyle(ButtonStyle.Success)
+        );
+
+        await message.channel.send({ embeds: [marketEmbed], components: [row1, row2] });
+    }
+});
+
+client.login(TOKEN);
+    
