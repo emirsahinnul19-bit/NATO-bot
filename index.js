@@ -31,6 +31,12 @@ const db = require('croxydb');
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = '1539374890405204070';
 
+// SİTE LİNKİ (YENİ EKLENEN VERIFLY PORTALİ)
+const SITE_LINKI = 'https://sites.google.com/view/nato/nato/verifly?authuser=0'; 
+
+// ONAYLI ROL (İSTEĞE BAĞLI: Rol vermek istemiyorsan tırnak içini boş bırakabilirsin)
+const ONAYLI_ROL_ID = ''; 
+
 // STATÜ VE RÜTBE ROLLERİ
 const ROLLER = {
     CIVILIAN: '1463997729888931945',
@@ -58,7 +64,7 @@ const VARSAYILAN_RUTBELER = {
     'tuggeneral': { varsayilanFiyat: 2500, rol: ROLLER.TUGGENERAL, isim: 'OF-6 Tuğgeneral', etiket: 'Tuğgeneral' }
 };
 
-// DİĞER RÜTBELERİ TEMİZLEMEK İÇİN Sadece SUBAY RÜTBE ID LİSTESİ
+// DİĞER RÜTBELERİ TEMİZLEMEK İÇİN SUBAY RÜTBE ID LİSTESİ
 const SUBAY_ROLLERI_LISTESI = [
     ROLLER.ASTEGMEN,
     ROLLER.TEGMEN,
@@ -90,6 +96,10 @@ const client = new Client({
 });
 
 const commands = [
+    new SlashCommandBuilder()
+        .setName('verify')
+        .setDescription('Hesabınızı bağlamak için web sitesi doğrulama bağlantısını gönderir.'),
+
     new SlashCommandBuilder()
         .setName('kayıt')
         .setDescription('NATO sunucusuna kayıt olmanızı sağlar.')
@@ -154,6 +164,24 @@ client.on('interactionCreate', async interaction => {
         try {
             await interaction.deferReply({ ephemeral: true });
         } catch (e) {}
+
+        // /verify KOMUTU (VERIFLY SİTE YÖNLENDİRMESİ)
+        if (commandName === 'verify') {
+            const verifyEmbed = new EmbedBuilder()
+                .setTitle('🎖️ NATO & Yıldırım Orduları Dijital Kimlik Doğrulama')
+                .setDescription(`Minecraft ve Discord hesabınızı bağlamak için aşağıdaki doğrulama portalını ziyaret edin.\n\n[👉 Doğrulama Kodunu Almak İçin Tıklayın](${SITE_LINKI})\n\nSite üzerinden aldığınız kodu **\`N!doğrula <KOD> <Minecraft_Nick>\`** şeklinde bu kanala yazın.`)
+                .setColor(0x2ea043)
+                .setFooter({ text: 'NATO Moderasyon ve Güvenlik Sistemi' });
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('Doğrulama Portalı')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(SITE_LINKI)
+            );
+
+            return interaction.editReply({ embeds: [verifyEmbed], components: [row] });
+        }
 
         if (commandName === 'kayıt') {
             const mcIsim = options.getString('mcisim');
@@ -298,7 +326,6 @@ client.on('interactionCreate', async interaction => {
 
             if (!hedef || !targetMember) return;
 
-            // Güncel fiyatı veritabanından çek (Ayarlanmadıysa varsayılanı kullan)
             const guncelFiyat = db.get(`marketFiyat_${secilenRutbeKey}`) || hedef.varsayilanFiyat;
             const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
 
@@ -309,14 +336,12 @@ client.on('interactionCreate', async interaction => {
             }
 
             try {
-                // 1. Kullanıcının üstündeki diğer tüm subay rütbelerini kaldır
                 for (const rolId of SUBAY_ROLLERI_LISTESI) {
                     if (targetMember.roles.cache.has(rolId)) {
                         await targetMember.roles.remove(rolId).catch(() => {});
                     }
                 }
 
-                // 2. Yeni rütbeyi ver ve OP düş
                 await targetMember.roles.add(hedef.rol);
                 db.set(`user_${interaction.user.id}.op`, userOp - guncelFiyat);
 
@@ -333,9 +358,64 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// MESSAGECREATE (N!market VE N!marketayar KOMUTLARI)
+// MESSAGECREATE (N!doğrula, N!market VE N!marketayar KOMUTLARI)
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
+
+    // N!doğrula <KOD> <MC_NICK> KOMUTU
+    if (message.content.startsWith('N!doğrula') || message.content.startsWith('N!dogrula')) {
+        const args = message.content.split(' ').slice(1);
+        const code = args[0];
+        const mcNick = args[1];
+
+        if (!code || !mcNick) {
+            return message.reply('⚠️ **Kullanım:** `N!doğrula <KOD> <Minecraft_Nick>`\n**Örnek:** `N!doğrula XQS3ND Herobrine_sinan`');
+        }
+
+        if (code.length !== 6) {
+            return message.reply('❌ **Hatalı Kod Formatı!** Siteden aldığınız 6 haneli doğrulama kodunu girdiğinizden emin olun.');
+        }
+
+        const discordKayıtlıMı = db.get(`user_${message.author.id}.mcName`);
+        const tumKullanicilar = db.get(`all_users`) || [];
+
+        if (discordKayıtlıMı) {
+            return message.reply(`⚠️ Bu Discord hesabı zaten **${discordKayıtlıMı}** kullanıcı adı ile eşleştirilmiş!`);
+        }
+
+        if (tumKullanicilar.includes(mcNick.toLowerCase())) {
+            return message.reply(`⚠️ **${mcNick}** Minecraft kullanıcı adı zaten başka bir Discord hesabına kayıtlı!`);
+        }
+
+        // Veritabanına Kayıt
+        db.set(`user_${message.author.id}.mcName`, mcNick);
+        db.set(`user_${message.author.id}.verified`, true);
+        db.set(`user_${message.author.id}.code`, code.toUpperCase());
+        db.push(`all_users`, mcNick.toLowerCase());
+
+        // Kullanıcının Nickini Güncelle (Ve varsa rol ver)
+        try {
+            const member = await message.guild.members.fetch(message.author.id);
+            if (member) {
+                await member.setNickname(`${mcNick}`).catch(() => {});
+                if (ONAYLI_ROL_ID && ONAYLI_ROL_ID.trim() !== '') {
+                    await member.roles.add(ONAYLI_ROL_ID).catch(() => {});
+                }
+            }
+        } catch (e) {}
+
+        const embed = new EmbedBuilder()
+            .setTitle('✅ Hesap Doğrulama Başarılı!')
+            .setColor(0x2ea043)
+            .setDescription(`Tebrikler <@${message.author.id}>, hesabınız veritabanımıza başarıyla kaydedildi.`)
+            .addFields(
+                { name: '🎮 Minecraft IGN', value: `\`${mcNick}\``, inline: true },
+                { name: '🔑 Kullanılan Kod', value: `\`${code.toUpperCase()}\``, inline: true }
+            )
+            .setFooter({ text: 'Yıldırım Orduları & NATO Kimlik Sistemi' });
+
+        return message.reply({ embeds: [embed] });
+    }
 
     // FİYAT AYARLAMA KOMUTU: N!marketayar <rütbe> <yeni_fiyat>
     if (message.content.startsWith('N!marketayar')) {
@@ -364,7 +444,6 @@ client.on('messageCreate', async message => {
             return message.reply('❌ Geçersiz rütbe adı! Geçerli rütbeler: `asteğmen`, `teğmen`, `üsteğmen`, `yüzbaşı`, `binbaşı`, `albay`, `yarbay`, `tuğgeneral`');
         }
 
-        // Veritabanına kaydet
         db.set(`marketFiyat_${inputRutbe}`, yeniFiyat);
 
         return message.reply(`✅ **${VARSAYILAN_RUTBELER[inputRutbe].isim}** rütbesinin yeni fiyatı **${yeniFiyat} OP** olarak güncellendi!`);
@@ -389,13 +468,3 @@ client.on('messageCreate', async message => {
         const row2 = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('rutbe_btn_binbasi').setLabel(`Binbaşı (${getFiyat('binbasi')} OP)`).setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('rutbe_btn_albay').setLabel(`Albay (${getFiyat('albay')} OP)`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_yarbay').setLabel(`Yarbay (${getFiyat('yarbay')} OP)`).setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('rutbe_btn_tuggeneral').setLabel(`Tuğgeneral (${getFiyat('tuggeneral')} OP)`).setStyle(ButtonStyle.Success)
-        );
-
-        await message.channel.send({ embeds: [marketEmbed], components: [row1, row2] });
-    }
-});
-
-client.login(TOKEN);
-            
