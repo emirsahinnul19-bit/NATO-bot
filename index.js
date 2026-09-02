@@ -165,8 +165,8 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'verify') {
             const verifyEmbed = new EmbedBuilder()
-                .setTitle('🎖️ NATO & Yıldırım Orduları Dijital Kimlik Doğrulama')
-                .setDescription(`Minecraft ve Discord hesabınızı bağlamak için aşağıdaki doğrulama portalını ziyaret edin.\n\n[👉 Doğrulama Kodunu Almak İçin Tıklayın](${SITE_LINKI})\n\nSite üzerinden aldığınız kodu **\`N!doğrula <KOD> <Minecraft_Nick>\`** şeklinde bu kanala yazın.`)
+                .setTitle('🎖️ NATO Verifly')
+                .setDescription(`Minecraft Discord hesap bağlamak için portalı ziyaret edin.\n\nSite üzerinden aldığınız kodu **\`N!doğrula <KOD> <Minecraft_Nick>\`** şeklinde bu kanala yazın.`)
                 .setColor(0x2ea043)
                 .setFooter({ text: 'NATO Moderasyon ve Güvenlik Sistemi' });
 
@@ -467,4 +467,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(TOKEN);
-    
+                        
