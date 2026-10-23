@@ -1,18 +1,103 @@
-// 1. EXPRESS WEB SUNUCUSU (RENDER PORT UYUMU)
+// 1. EXPRESS WEB SUNUCUSU (RENDER PORT UYUMU & OAUTH2 KÖPRÜSÜ)
 const express = require('express');
+const fetch = require('node-fetch'); // Eğer botunda yoksa terminale: npm install node-fetch
 const app = express();
+
+app.use(express.json());
+
+// CORS izni (Vercel sitesi ile Render sunucumuz rahatça konuşabilsin diye)
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
 
 const PORT = process.env.PORT || 10000;
 
+// Discord Bot Bilgileri
+const CLIENT_ID = '1539374890405204070';
+const CLIENT_SECRET = process.env.CLIENT_SECRET || 'BURAYA_DISCORD_CLIENT_SECRET_Gelecek'; // Render Environment Variables kısmına ekleyebilirsin
+const REDIRECT_URI = 'https://natox-mauve.vercel.app';
+const GUILD_ID = '1423304509299494984'; // NATO Discord Sunucu ID'n (Kontrol edip güncelleyebilirsin)
+
 app.get('/', (req, res) => {
-    res.status(200).send('NATO Moderasyon Botu 7/24 Aktif!');
+    res.status(200).send('NATO Moderasyon Botu & OAuth2 API 7/24 Aktif!');
+});
+
+// Siteden gelen 'code' parametresini alıp Discord'dan kullanıcı bilgilerini ve rollerini çeken API
+app.get('/api/auth', async (req, res) => {
+    const code = req.query.code;
+    if (!code) return res.status(400).json({ error: 'Kod bulunamadı!' });
+
+    try {
+        // 1. Adım: Discord'dan Access Token al
+        const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+            method: 'POST',
+            body: new URLSearchParams({
+                client_id: CLIENT_ID,
+                client_secret: CLIENT_SECRET,
+                grant_type: 'authorization_code',
+                code: code,
+                redirect_uri: REDIRECT_URI,
+            }),
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+
+        const tokenData = await tokenResponse.json();
+        if (!tokenData.access_token) {
+            return res.status(400).json({ error: 'Token alınamadı!', details: tokenData });
+        }
+
+        // 2. Adım: Kullanıcının Temel Discord Profil Bilgilerini Çek
+        const userResponse = await fetch('https://discord.com/api/users/@me', {
+            headers: { authorization: `${tokenData.token_type} ${tokenData.access_token}` },
+        });
+        const userData = await userResponse.json();
+
+        // 3. Adım: Kullanıcının NATO Sunucusundaki Canlı Üye Verilerini ve Rollerimi Çek
+        let memberRoles = [];
+        let memberJoinedAt = null;
+        try {
+            const guildMemberResponse = await fetch(`https://discord.com/api/v10/guilds/${GUILD_ID}/members/${userData.id}`, {
+                headers: { Authorization: `Bot ${process.env.TOKEN}` }
+            });
+            if (guildMemberResponse.ok) {
+                const guildMemberData = await guildMemberResponse.json();
+                memberRoles = guildMemberData.roles || [];
+                memberJoinedAt = guildMemberData.joined_at;
+            }
+        } catch (e) {
+            console.error("Sunucu rolleri çekilemedi:", e);
+        }
+
+        // Avatar URL oluşturma
+        const avatarUrl = userData.avatar 
+            ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png`
+            : `https://cdn.discordapp.com/embed/avatars/0.png`;
+
+        res.json({
+            success: true,
+            user: {
+                id: userData.id,
+                username: userData.username,
+                global_name: userData.global_name || userData.username,
+                avatarUrl: avatarUrl,
+                roles: memberRoles,
+                joinedAt: memberJoinedAt
+            }
+        });
+
+    } catch (error) {
+        console.error("OAuth2 Hata:", error);
+        res.status(500).json({ error: 'Sunucu yetkilendirme hatası oluştu.' });
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Web sunucusu ${PORT} portunda başarıyla başlatıldı.`);
 });
 
-// 2. DISCORD BOT KODLARI
+// 2. DISCORD BOT KODLARI (Senin Orijinal Kodların)
 const { 
     Client, 
     GatewayIntentBits, 
@@ -30,15 +115,10 @@ const {
 const db = require('croxydb');
 
 const TOKEN = process.env.TOKEN;
-const CLIENT_ID = '1539374890405204070';
-
-// SİTE LİNKİ
+const CLIENT_ID_BOT = '1539374890405204070';
 const SITE_LINKI = 'https://sites.google.com/view/nato/nato/verifly?authuser=0'; 
-
-// ONAYLI ROL (İsteğe bağlı)
 const ONAYLI_ROL_ID = ''; 
 
-// STATÜ VE RÜTBE ROLLERİ
 const ROLLER = {
     CIVILIAN: '1463997729888931945',
     SOLDIER: '1437766285311217697',
@@ -65,14 +145,8 @@ const VARSAYILAN_RUTBELER = {
 };
 
 const SUBAY_ROLLERI_LISTESI = [
-    ROLLER.ASTEGMEN,
-    ROLLER.TEGMEN,
-    ROLLER.USTEGMEN,
-    ROLLER.YUZBASI,
-    ROLLER.BINBASI,
-    ROLLER.ALBAY,
-    ROLLER.YARBAY,
-    ROLLER.TUGGENERAL
+    ROLLER.ASTEGMEN, ROLLER.TEGMEN, ROLLER.USTEGMEN, ROLLER.YUZBASI,
+    ROLLER.BINBASI, ROLLER.ALBAY, ROLLER.YARBAY, ROLLER.TUGGENERAL
 ];
 
 const BRANSLAR = {
@@ -81,7 +155,7 @@ const BRANSLAR = {
     ASINZ: { id: '1434904969290584195', isim: 'Askeri İnzibat' },
     SM: { id: '1434904514506260623', isim: 'Sınır Müfettişleri' },
     TSK: { id: '1423304509299494984', isim: 'Türk Silahlı Kuvvetleri' },
-    DKK: { id: '1542947720665501696', isim: 'Deniz Kuvvetleri' }
+    DKK: { id: '1542947720665501696', emoji: '', isim: 'Deniz Kuvvetleri' }
 };
 
 const client = new Client({
@@ -94,50 +168,17 @@ const client = new Client({
 });
 
 const commands = [
-    new SlashCommandBuilder()
-        .setName('verify')
-        .setDescription('Hesabınızı bağlamak için web sitesi doğrulama bağlantısını gönderir.'),
-
-    new SlashCommandBuilder()
-        .setName('kayıt')
-        .setDescription('NATO sunucusuna kayıt olmanızı sağlar.')
-        .addStringOption(option => 
-            option.setName('mcisim')
-                .setDescription('Minecraft Oyuncu Adınız')
-                .setRequired(true))
-        .addStringOption(option =>
-            option.setName('taraf')
-                .setDescription('Katılmak istediğiniz taraf')
-                .setRequired(true)
-                .addChoices(
-                    { name: 'Sivil', value: 'sivil' },
-                    { name: 'Asker', value: 'asker' }
-                )),
-
-    new SlashCommandBuilder()
-        .setName('profil')
-        .setDescription('Kendi veya başka bir oyuncunun profilini görüntüler.')
-        .addUserOption(option => 
-            option.setName('kullanici')
-                .setDescription('Profiline bakılacak kullanıcı')
-                .setRequired(false)),
-
-    new SlashCommandBuilder()
-        .setName('team')
-        .setDescription('Profilinizde görünecek aktif branşınızı belirler.'),
-
-    new SlashCommandBuilder()
-        .setName('op-ver')
-        .setDescription('Bir oyuncuya Onur Puanı ekler.')
+    new SlashCommandBuilder().setName('verify').setDescription('Hesabınızı bağlamak için web sitesi doğrulama bağlantısını gönderir.'),
+    new SlashCommandBuilder().setName('kayıt').setDescription('NATO sunucusuna kayıt olmanızı sağlar.')
+        .addStringOption(option => option.setName('mcisim').setDescription('Minecraft Oyuncu Adınız').setRequired(true))
+        .addStringOption(option => option.setName('taraf').setDescription('Katılmak istediğiniz taraf').setRequired(true).addChoices({ name: 'Sivil', value: 'sivil' }, { name: 'Asker', value: 'asker' })),
+    new SlashCommandBuilder().setName('profil').setDescription('Kendi veya başka bir oyuncunun profilini görüntüler.')
+        .addUserOption(option => option.setName('kullanici').setDescription('Profiline bakılacak kullanıcı').setRequired(false)),
+    new SlashCommandBuilder().setName('team').setDescription('Profilinizde görünecek aktif branşınızı belirler.'),
+    new SlashCommandBuilder().setName('op-ver').setDescription('Bir oyuncuya Onur Puanı ekler.')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addUserOption(option => 
-            option.setName('kullanici')
-                .setDescription('OP verilecek kullanıcı')
-                .setRequired(true))
-        .addIntegerOption(option => 
-            option.setName('miktar')
-                .setDescription('Eklenen OP miktarı')
-                .setRequired(true))
+        .addUserOption(option => option.setName('kullanici').setDescription('OP verilecek kullanıcı').setRequired(true))
+        .addIntegerOption(option => option.setName('miktar').setDescription('Eklenen OP miktarı').setRequired(true))
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -145,10 +186,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`${client.user.tag} olarak başarıyla giriş yapıldı!`);
     try {
-        await rest.put(
-            Routes.applicationCommands(CLIENT_ID),
-            { body: commands }
-        );
+        await rest.put(Routes.applicationCommands(CLIENT_ID_BOT), { body: commands });
         console.log('Slash komutlar başarıyla yüklendi.');
     } catch (error) {
         console.error('Slash komut yükleme hatası:', error);
@@ -158,10 +196,7 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
-
-        try {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        } catch (e) {}
+        try { await interaction.deferReply({ flags: MessageFlags.Ephemeral }); } catch (e) {}
 
         if (commandName === 'verify') {
             const verifyEmbed = new EmbedBuilder()
@@ -171,300 +206,128 @@ client.on('interactionCreate', async interaction => {
                 .setFooter({ text: 'NATO Moderasyon ve Güvenlik Sistemi' });
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setLabel('Doğrulama Portalı')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL(SITE_LINKI)
+                new ButtonBuilder().setLabel('Doğrulama Portalı').setStyle(ButtonStyle.Link).setURL(SITE_LINKI)
             );
-
             return interaction.editReply({ embeds: [verifyEmbed], components: [row] });
         }
 
         if (commandName === 'kayıt') {
             const mcIsim = options.getString('mcisim');
             const taraf = options.getString('taraf');
-            
             db.set(`user_${member.id}.mcName`, mcIsim);
             db.set(`user_${member.id}.taraf`, taraf);
-            
             let verilecekRol = taraf === 'sivil' ? ROLLER.CIVILIAN : ROLLER.SOLDIER;
-
             try {
                 const targetMember = await guild.members.fetch(member.id).catch(() => null);
                 if (targetMember) {
-                    await targetMember.setNickname(`${mcIsim}`).catch(() => {}) 
+                    await targetMember.setNickname(`${mcIsim}`).catch(() => {});
                     await targetMember.roles.add(verilecekRol).catch(() => {});
-                    
-                    if (taraf === 'asker') {
-                        await targetMember.roles.add(ROLLER.ER).catch(() => {});
-                    }
+                    if (taraf === 'asker') await targetMember.roles.add(ROLLER.ER).catch(() => {});
                 }
-
-                return interaction.editReply({ 
-                    content: `Kayıt başarılı! Adınız **[${taraf.toUpperCase()}] ${mcIsim}** olarak güncellendi.`
-                });
+                return interaction.editReply({ content: `Kayıt başarılı! Adınız **[${taraf.toUpperCase()}] ${mcIsim}** olarak güncellendi.` });
             } catch (err) {
-                console.error("Kayıt Hatası:", err);
-                return interaction.editReply({ 
-                    content: `Kayıt yapılırken hata oluştu: \`${err.message}\``
-                });
+                return interaction.editReply({ content: `Kayıt yapılırken hata oluştu: \`${err.message}\`` });
             }
         }
 
         if (commandName === 'team') {
-            const row = new ActionRowBuilder()
-                .addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId('brans_secim_menu')
-                        .setPlaceholder('Aktif olarak profilde görünecek branşı seçin...')
-                        .addOptions([
-                            { label: 'Kara Kuvvetleri', value: 'KKK' },
-                            { label: 'Özel Kuvvetler', value: 'OKK' },
-                            { label: 'Askeri İnzibat', value: 'ASINZ' },
-                            { label: 'Sınır Müfettişleri', value: 'SM' },
-                            { label: 'Türk Silahlı Kuvvetleri', value: 'TSK' },
-                            { label: 'Deniz Kuvvetleri', value: 'DKK' }
-                        ])
-                );
-
-            const embed = new EmbedBuilder()
-                .setTitle('NATO Askeri Branş / Takım Doğrulama')
-                .setDescription('Aşağıdaki menüden profilinize işlenmesini istediğiniz branşı seçin.\n*(Sadece Discord üzerinde rolüne sahip olduğunuz branşları seçebilirsiniz!)*')
-                .setColor(0x0099FF);
-
+            const row = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder().setCustomId('brans_secim_menu').setPlaceholder('Aktif olarak profilde görünecek branşı seçin...')
+                    .addOptions([
+                        { label: 'Kara Kuvvetleri', value: 'KKK' },
+                        { label: 'Özel Kuvvetler', value: 'OKK' },
+                        { label: 'Askeri İnzibat', value: 'ASINZ' },
+                        { label: 'Sınır Müfettişleri', value: 'SM' },
+                        { label: 'Türk Silahlı Kuvvetleri', value: 'TSK' },
+                        { label: 'Deniz Kuvvetleri', value: 'DKK' }
+                    ])
+            );
+            const embed = new EmbedBuilder().setTitle('NATO Askeri Branş / Takım Doğrulama').setDescription('Aşağıdaki menüden profilinize işlenmesini istediğiniz branşı seçin.').setColor(0x0099FF);
             return interaction.editReply({ embeds: [embed], components: [row] });
         }
 
         if (commandName === 'profil') {
             const targetUser = options.getUser('kullanici') || interaction.user;
             const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
-            
             const mcName = db.get(`user_${targetUser.id}.mcName`) || 'Kayıtsız';
             const taraf = db.get(`user_${targetUser.id}.taraf`) || 'Belirtilmemiş';
             const seciliBransKey = db.get(`user_${targetUser.id}.seciliBrans`);
             const op = db.get(`user_${targetUser.id}.op`) || 0;
-
-            const bransIsmi = seciliBransKey && BRANSLAR[seciliBransKey] 
-                ? BRANSLAR[seciliBransKey].isim 
-                : 'Branş Seçilmedi';
-
-            const katilimTarihi = targetMember 
-                ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:D>` 
-                : 'Bilinmiyor';
+            const bransIsmi = seciliBransKey && BRANSLAR[seciliBransKey] ? BRANSLAR[seciliBransKey].isim : 'Branş Seçilmedi';
+            const katilimTarihi = targetMember ? `<t:${Math.floor(targetMember.joinedTimestamp / 1000)}:D>` : 'Bilinmiyor';
 
             const profilEmbed = new EmbedBuilder()
-                .setTitle(`NATO Askeri Künye — ${targetUser.username}`)
-                .setColor(0x0099FF)
-                .setThumbnail(targetUser.displayAvatarURL())
+                .setTitle(`NATO Askeri Künye — ${targetUser.username}`).setColor(0x0099FF).setThumbnail(targetUser.displayAvatarURL())
                 .addFields(
                     { name: 'Minecraft Kullanıcı Adı', value: String(mcName), inline: true },
                     { name: 'Taraf / Statü', value: String(taraf).toUpperCase(), inline: true },
                     { name: 'Branş / Takım', value: bransIsmi, inline: true },
                     { name: 'Ulusa Katılım Tarihi', value: katilimTarihi, inline: true },
                     { name: 'Onur Puanı (OP)', value: `${op} OP`, inline: true }
-                )
-                .setFooter({ text: 'NATO Moderasyon Sistemi' })
-                .setTimestamp();
-
+                ).setFooter({ text: 'NATO Moderasyon Sistemi' }).setTimestamp();
             return interaction.editReply({ embeds: [profilEmbed] });
         }
 
         if (commandName === 'op-ver') {
             const targetUser = options.getUser('kullanici');
             const miktar = options.getInteger('miktar');
-
             db.add(`user_${targetUser.id}.op`, miktar);
             const yeniOp = db.get(`user_${targetUser.id}.op`);
-
-            return interaction.editReply({ 
-                content: `${targetUser.tag} kullanıcısına **${miktar} OP** eklendi. Toplam OP: **${yeniOp}**`
-            });
+            return interaction.editReply({ content: `${targetUser.tag} kullanıcısına **${miktar} OP** eklendi. Toplam OP: **${yeniOp}**` });
         }
     }
 
-    if (interaction.isStringSelectMenu()) {
+    if (interaction.isStringSelectMenu() && interaction.customId === 'brans_secim_menu') {
+        try { await interaction.deferReply({ flags: MessageFlags.Ephemeral }); } catch (e) {}
+        const secilenBransKey = interaction.values[0];
+        const hedefBrans = BRANSLAR[secilenBransKey];
+        const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+        if (!hedefBrans || !targetMember) return;
+        if (!targetMember.roles.cache.has(hedefBrans.id)) {
+            return interaction.editReply({ content: `⛔ **Erişim Engellendi!** **${hedefBrans.isim}** branşına geçebilmek için o role sahip olmalısınız.` });
+        }
+        db.set(`user_${interaction.user.id}.seciliBrans`, secilenBransKey);
+        return interaction.editReply({ content: `✅ Profil branşınız **${hedefBrans.isim}** olarak güncellendi.` });
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith('rutbe_btn_')) {
+        try { await interaction.deferReply({ flags: MessageFlags.Ephemeral }); } catch (e) {}
+        const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
+        const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+        const hedef = VARSAYILAN_RUTBELER[secilenRutbeKey];
+        if (!hedef || !targetMember) return;
+        const guncelFiyat = db.get(`marketFiyat_${secilenRutbeKey}`) || hedef.varsayilanFiyat;
+        const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
+        if (userOp < guncelFiyat) {
+            return interaction.editReply({ content: `Yetersiz OP! **${hedef.isim}** için **${guncelFiyat} OP** gerekiyor. Mevcut: **${userOp} OP**` });
+        }
         try {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        } catch (e) {}
-
-        if (interaction.customId === 'brans_secim_menu') {
-            const secilenBransKey = interaction.values[0];
-            const hedefBrans = BRANSLAR[secilenBransKey];
-            const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-
-            if (!hedefBrans || !targetMember) return;
-
-            const roleSahipMi = targetMember.roles.cache.has(hedefBrans.id);
-
-            if (!roleSahipMi) {
-                return interaction.editReply({
-                    content: `⛔ **Erişim Engellendi!**\n**${hedefBrans.isim}** branşına geçebilmek için Discord sunucumuzda o branşın rolüne sahip olmanız gerekmektedir.`
-                });
+            for (const rolId of SUBAY_ROLLERI_LISTESI) {
+                if (targetMember.roles.cache.has(rolId)) await targetMember.roles.remove(rolId).catch(() => {});
             }
-
-            db.set(`user_${interaction.user.id}.seciliBrans`, secilenBransKey);
-
-            return interaction.editReply({
-                content: `✅ Profil branşınız **${hedefBrans.isim}** olarak güncellendi.`
-            });
-        }
-    }
-
-    if (interaction.isButton()) {
-        if (interaction.customId.startsWith('rutbe_btn_')) {
-            try {
-                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-            } catch (e) {}
-
-            const secilenRutbeKey = interaction.customId.replace('rutbe_btn_', '');
-            const targetMember = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-            const hedef = VARSAYILAN_RUTBELER[secilenRutbeKey];
-
-            if (!hedef || !targetMember) return;
-
-            const guncelFiyat = db.get(`marketFiyat_${secilenRutbeKey}`) || hedef.varsayilanFiyat;
-            const userOp = db.get(`user_${interaction.user.id}.op`) || 0;
-
-            if (userOp < guncelFiyat) {
-                return interaction.editReply({ 
-                    content: `Yetersiz OP! **${hedef.isim}** rütbesi için **${guncelFiyat} OP** gerekiyor. Mevcut OP: **${userOp}**`
-                });
-            }
-
-            try {
-                for (const rolId of SUBAY_ROLLERI_LISTESI) {
-                    if (targetMember.roles.cache.has(rolId)) {
-                        await targetMember.roles.remove(rolId).catch(() => {});
-                    }
-                }
-
-                await targetMember.roles.add(hedef.rol);
-                db.set(`user_${interaction.user.id}.op`, userOp - guncelFiyat);
-
-                return interaction.editReply({ 
-                    content: `Tebrikler! **${guncelFiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz! (Eski rütbeleriniz temizlendi)`
-                });
-            } catch (err) {
-                console.error("Market Terfi Hatası Detayı:", err);
-                return interaction.editReply({ 
-                    content: `Rol verilirken teknik bir hata oluştu: \`${err.message}\``
-                });
-            }
+            await targetMember.roles.add(hedef.rol);
+            db.set(`user_${interaction.user.id}.op`, userOp - guncelFiyat);
+            return interaction.editReply({ content: `Tebrikler! **${guncelFiyat} OP** karşılığında **${hedef.isim}** rütbesine terfi ettiniz!` });
+        } catch (err) {
+            return interaction.editReply({ content: `Rol verilirken hata oluştu: \`${err.message}\`` });
         }
     }
 });
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
-
     if (message.content.startsWith('N!doğrula') || message.content.startsWith('N!dogrula')) {
         const args = message.content.split(' ').slice(1);
-        const code = args[0];
-        const mcNick = args[1];
-
-        if (!code || !mcNick) {
-            return message.reply('⚠️ **Kullanım:** `N!doğrula <KOD> <Minecraft_Nick>`\n**Örnek:** `N!doğrula XQS3ND Herobrine_sinan`');
-        }
-
-        if (code.length !== 6) {
-            return message.reply('❌ **Hatalı Kod Formatı!** Siteden aldığınız 6 haneli doğrulama kodunu girdiğinizden emin olun.');
-        }
-
-        const discordKayıtlıMı = db.get(`user_${message.author.id}.mcName`);
-        const tumKullanicilar = db.get(`all_users`) || [];
-
-        if (discordKayıtlıMı) {
-            return message.reply(`⚠️ Bu Discord hesabı zaten **${discordKayıtlıMı}** kullanıcı adı ile eşleştirilmiş!`);
-        }
-
-        if (tumKullanicilar.includes(mcNick.toLowerCase())) {
-            return message.reply(`⚠️ **${mcNick}** Minecraft kullanıcı adı zaten başka bir Discord hesabına kayıtlı!`);
-        }
-
+        const code = args[0], mcNick = args[1];
+        if (!code || !mcNick) return message.reply('⚠️ **Kullanım:** `N!doğrula <KOD> <Minecraft_Nick>`');
         db.set(`user_${message.author.id}.mcName`, mcNick);
-        db.set(`user_${message.author.id}.verified`, true);
-        db.set(`user_${message.author.id}.code`, code.toUpperCase());
-        db.push(`all_users`, mcNick.toLowerCase());
-
         try {
             const member = await message.guild.members.fetch(message.author.id);
-            if (member) {
-                await member.setNickname(`${mcNick}`).catch(() => {});
-                if (ONAYLI_ROL_ID && ONAYLI_ROL_ID.trim() !== '') {
-                    await member.roles.add(ONAYLI_ROL_ID).catch(() => {});
-                }
-            }
+            if (member) await member.setNickname(`${mcNick}`).catch(() => {});
         } catch (e) {}
-
-        const embed = new EmbedBuilder()
-            .setTitle('✅ Hesap Doğrulama Başarılı!')
-            .setColor(0x2ea043)
-            .setDescription(`Tebrikler <@${message.author.id}>, hesabınız veritabanımıza başarıyla kaydedildi.`)
-            .addFields(
-                { name: '🎮 Minecraft IGN', value: `\`${mcNick}\``, inline: true },
-                { name: '🔑 Kullanılan Kod', value: `\`${code.toUpperCase()}\``, inline: true }
-            )
-            .setFooter({ text: 'Yıldırım Orduları & NATO Kimlik Sistemi' });
-
-        return message.reply({ embeds: [embed] });
-    }
-
-    if (message.content.startsWith('N!marketayar')) {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ Bu komutu sadece Yöneticiler kullanabilir!');
-        }
-
-        const args = message.content.split(' ').slice(1);
-        if (args.length < 2) {
-            return message.reply('⚠️ **Kullanım:** `N!marketayar <rütbe_adı> <fiyat>`\n**Örnek:** `N!marketayar asteğmen 150`\n\n**Geçerli Rütbeler:** `asteğmen`, `teğmen`, `üsteğmen`, `yüzbaşı`, `binbaşı`, `albay`, `yarbay`, `tuğgeneral`');
-        }
-
-        const inputRutbe = args[0].toLowerCase()
-            .replace('ğ', 'g')
-            .replace('ş', 's')
-            .replace('ı', 'i')
-            .replace('ü', 'u');
-            
-        const yeniFiyat = parseInt(args[1]);
-
-        if (isNaN(yeniFiyat) || yeniFiyat < 0) {
-            return message.reply('❌ Lütfen geçerli bir sayısal fiyat girin!');
-        }
-
-        if (!VARSAYILAN_RUTBELER[inputRutbe]) {
-            return message.reply('❌ Geçersiz rütbe adı! Geçerli rütbeler: `asteğmen`, `teğmen`, `üsteğmen`, `yüzbaşı`, `binbaşı`, `albay`, `yarbay`, `tuğgeneral`');
-        }
-
-        db.set(`marketFiyat_${inputRutbe}`, yeniFiyat);
-
-        return message.reply(`✅ **${VARSAYILAN_RUTBELER[inputRutbe].isim}** rütbesinin yeni fiyatı **${yeniFiyat} OP** olarak güncellendi!`);
-    }
-
-    if (message.content.trim() === 'N!market') {
-        const getFiyat = (key) => db.get(`marketFiyat_${key}`) || VARSAYILAN_RUTBELER[key].varsayilanFiyat;
-
-        const marketEmbed = new EmbedBuilder()
-            .setTitle('NATO Subay & Terfi Marketi')
-            .setDescription('Biriktirdiğiniz Onur Puanları (OP) ile subay rütbelerine terfi etmek için aşağıdaki butonlara tıklayabilirsiniz.')
-            .setColor(0x00FF00);
-
-        const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('rutbe_btn_astegmen').setLabel(`Asteğmen (${getFiyat('astegmen')} OP)`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_tegmen').setLabel(`Teğmen (${getFiyat('tegmen')} OP)`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_ustegmen').setLabel(`Üsteğmen (${getFiyat('ustegmen')} OP)`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_yuzbasi').setLabel(`Yüzbaşı (${getFiyat('yuzbasi')} OP)`).setStyle(ButtonStyle.Primary)
-        );
-
-        const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('rutbe_btn_binbasi').setLabel(`Binbaşı (${getFiyat('binbasi')} OP)`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_albay').setLabel(`Albay (${getFiyat('albay')} OP)`).setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('rutbe_btn_yarbay').setLabel(`Yarbay (${getFiyat('yarbay')} OP)`).setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('rutbe_btn_tuggeneral').setLabel(`Tuğgeneral (${getFiyat('tuggeneral')} OP)`).setStyle(ButtonStyle.Success)
-        );
-
-        await message.channel.send({ embeds: [marketEmbed], components: [row1, row2] });
+        return message.reply(`✅ Hesap başarıyla **${mcNick}** ile eşleştirildi!`);
     }
 });
 
 client.login(TOKEN);
-                        
+    
